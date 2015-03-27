@@ -1,6 +1,9 @@
 var io = require('socket.io-client');
 var uuid = require('uuid');
 
+var EventEmitter = require('events').EventEmitter;
+var events = new EventEmitter();
+
 var server = process.argv[2];
 var maxClients = parseInt(process.argv[3]);
 var maxClientsPerRoom = parseInt(process.argv[4]);
@@ -40,11 +43,40 @@ var sendMsgs = function(socket, to, nrOfMessages, delay, callback) {
 		payload: payload
 	});
 
-	nrOfMessages--;
-	setTimeout(function() {
-		sendMsgs(socket, to, nrOfMessages, delay, callback);
-	}, delay);
+	var ackTimer = new Timer();
+	events.once('ack ' + payload, function () {
+
+		ackTimes.push(ackTimer.elapsed());
+
+		nrOfMessages--;
+		setTimeout(function() {
+			sendMsgs(socket, to, nrOfMessages, delay, callback);
+		}, delay);
+
+	});
 }
+
+var ackTimes = [];
+var intervalTimes = [];
+setInterval(function () {
+	var total = 0;
+	var counter = 0;
+	intervalTimes.forEach(function (time) {
+		total += time;
+		counter += 1;
+	});
+	intervalTimes = [];
+	console.log('interval average ms', (total / counter), '(' + counter + ')');
+
+	total = 0;
+	counter = 0;
+	ackTimes.forEach(function (time) {
+		total += time;
+		counter += 1;
+	});
+	ackTimes = [];
+	console.log('ack average ms', (total / counter), '(' + counter + ')');
+}, 1000);
 
 var startClient = function () {
 
@@ -61,22 +93,24 @@ var startClient = function () {
 		socket.emit('join', currentRoom, function (err, roomDescription) {
 			console.log('join ms', joinTimer.elapsed());
 			//console.log(roomDescription);
-			if (Object.keys(roomDescription.clients).length >= maxClientsPerRoom + 2) { // + 2 to cover for prototype junk...
+			if (Object.keys(roomDescription.clients).length >= maxClientsPerRoom) {
 				currentRoom = uuid.v4();
 			}
 			Object.keys(roomDescription.clients).forEach(function(name) {
 				var initialPayloadTimer = new Timer();
-				sendMsgs(socket, name, 50, 10, function() {
+				sendMsgs(socket, name, 50, 5, function() {
 					console.log('initial payload ms', initialPayloadTimer.elapsed());
 				});
 				setInterval(function() {
 					var intervalTimer = new Timer();
-					sendMsgs(socket, name, 0, 1, function() {
-						console.log('interval ms', intervalTimer.elapsed());
+					sendMsgs(socket, name, 1, 0, function() {
+						intervalTimes.push(intervalTimer.elapsed());
 					});
-				}, 5000);
+				}, 1000);
 			});
-			setTimeout(startClient, 500);
+			if (connects < maxClients) {
+				setTimeout(startClient, 100);
+			}
 		});
 	});
 
@@ -87,11 +121,14 @@ var startClient = function () {
 		console.log('turnservers ms', turnserversTimer.elapsed());
 	});
 	socket.on('message', function (data) {
+		// console.log(data);
 		if (data.payload) {
 			socket.emit('message', {
 				to: data.from,
 				ack: data.payload
 			});
+		} else if (data.ack) {
+			events.emit('ack ' + data.ack);
 		}
 	});
 	socket.on('event', function() {
