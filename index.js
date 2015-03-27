@@ -10,6 +10,7 @@ var maxClientsPerRoom = parseInt(process.argv[4]);
 
 var connects = 0;
 var disconnects = 0;
+var waitingAcks = 0;
 
 var currentRoom = uuid.v4();
 
@@ -44,7 +45,10 @@ var sendMsgs = function(socket, to, nrOfMessages, delay, callback) {
 	});
 
 	var ackTimer = new Timer();
+	waitingAcks += 1;
 	events.once('ack ' + payload, function () {
+
+		waitingAcks -= 1;
 
 		ackTimes.push(ackTimer.elapsed());
 
@@ -59,7 +63,7 @@ var sendMsgs = function(socket, to, nrOfMessages, delay, callback) {
 var ackTimes = [];
 var intervalTimes = [];
 setInterval(function () {
-	console.log('connects/disconnects: ', connects + '/' + disconnects);
+	console.log('connects/disconnects: ', connects + '/' + disconnects, '- waiting acks:', waitingAcks);
 
 	var total = 0;
 	var counter = 0;
@@ -90,6 +94,8 @@ var startClient = function () {
 		stunserversTimer = new Timer();
 		turnserversTimer = new Timer();
 
+		var myRoomMates = {};
+
 		joinTimer = new Timer();
 		socket.emit('join', currentRoom, function (err, roomDescription) {
 			console.log('join ms', joinTimer.elapsed());
@@ -98,6 +104,12 @@ var startClient = function () {
 				currentRoom = uuid.v4();
 			}
 			Object.keys(roomDescription.clients).forEach(function(name) {
+
+				if (typeof myRoomMates[name] === 'undefined') {
+
+					myRoomMates[name] = roomDescription.clients[name];
+				}
+
 				var initialPayloadTimer = new Timer();
 				sendMsgs(socket, name, 50, 5, function() {
 					console.log('initial payload ms', initialPayloadTimer.elapsed());
