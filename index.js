@@ -59,6 +59,8 @@ var sendMsgs = function(socket, to, nrOfMessages, delay, callback) {
 var ackTimes = [];
 var intervalTimes = [];
 setInterval(function () {
+	console.log('connects/disconnects: ', connects + '/' + disconnects);
+
 	var total = 0;
 	var counter = 0;
 	intervalTimes.forEach(function (time) {
@@ -85,7 +87,6 @@ var startClient = function () {
 
 	socket.on('connect', function () {
 		connects += 1;
-		console.log('connects: ', connects);
 		stunserversTimer = new Timer();
 		turnserversTimer = new Timer();
 
@@ -137,7 +138,6 @@ var startClient = function () {
 
 	socket.on('disconnect', function () {
 		disconnects += 1;
-		console.log('disconnects: ', disconnects);
 	});
 
 };
